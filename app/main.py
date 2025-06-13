@@ -5,7 +5,7 @@ from app.database import crear_tabla, insertar_registro, obtener_registros
 app = FastAPI()
 
 crear_tabla()
-
+#test
 @app.post("/registro")
 def agregar_registro(registro: RegistroEntrada):
     exito = insertar_registro(
