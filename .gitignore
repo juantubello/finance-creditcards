@@ -26,6 +26,3 @@ venv/
 # Mac / Linux
 .DS_Store
 *.swp
-
-# Creds
-*.json

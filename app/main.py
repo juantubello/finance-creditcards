@@ -6,15 +6,7 @@ from app.database import (
     insertar_registro,
     obtener_registros,
     insertar_resumen_tarjeta,
-    existe_documento,
-    get_sqlite_uuids,
-    eliminar_varios_por_uuid,
-    insertar_varios_registros
-)
-from app.googlesheet import(
-    auth_in_gdrive,
-    get_current_month_expenses,
-    get_historic_expenses
+    existe_documento
 )
 from datetime import datetime
 import hashlib
@@ -37,7 +29,6 @@ crear_tablas_resumen_tarjeta()
 @app.post("/registro")
 def agregar_registro(registro: RegistroEntrada):
     exito = insertar_registro(
-        uuid=registro.uuid,
         marca_temporal=registro.marca_temporal.isoformat(),
         descripcion=registro.descripcion,
         importe=registro.importe,
@@ -56,7 +47,6 @@ def listar_registros(anio: int, mes: int):
 # Nuevo endpoint POST para /loadCardResume
 @app.post("/loadCardResume")
 async def cargar_resumen_tarjeta(request: Request):
-    card_type = request.headers.get('card_type')
     payload_bytes = await request.body()
     payload_dict = await request.json()
 
@@ -70,7 +60,7 @@ async def cargar_resumen_tarjeta(request: Request):
     if existe_documento(document_number):
         raise HTTPException(status_code=409, detail="Resumen ya existe")
 
-    insertar_resumen_tarjeta(document_number, resume_date, payload_dict, card_type)
+    insertar_resumen_tarjeta(document_number, resume_date, payload_dict)
 
     return {"status": "Resumen de tarjeta cargado correctamente"}
 
@@ -90,26 +80,3 @@ def get_available_resumes(anio: int, mes: int):
     from app.database import obtener_tarjetas_disponibles
 
     return obtener_tarjetas_disponibles(anio, mes)
-
-@app.get("/syncCurrentMonthExpenses")
-def sync_current_month_expenses():
-    client = auth_in_gdrive()
-    sheet = get_current_month_expenses(client)
-    sheet_uuids = set(row["UUID"] for row in sheet if row["UUID"])
-
-    sqlite_uuids = get_sqlite_uuids()
-
-    uuids_to_insert = sheet_uuids - sqlite_uuids
-    uuids_to_delete = sqlite_uuids - sheet_uuids
-
-    # Filtrar solo los que hay que insertar
-    filas_a_insertar = [row for row in sheet if row["UUID"] in uuids_to_insert]
-
-    eliminar_varios_por_uuid(uuids_to_delete)
-    insertar_varios_registros(filas_a_insertar)
-
-    return {
-        "estado": "Sincronización completa optimizada",
-        "agregados": len(uuids_to_insert),
-        "eliminados": len(filas_a_insertar)
-    }
