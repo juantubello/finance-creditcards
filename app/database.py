@@ -1,5 +1,4 @@
 import sqlite3
-from hashlib import sha256
 from pathlib import Path
 from datetime import datetime
 
@@ -21,7 +20,7 @@ def crear_tabla_registros():
         conn.execute("""
             CREATE TABLE IF NOT EXISTS registros (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                cable TEXT UNIQUE,
+                uuid TEXT UNIQUE,
                 marca_temporal TEXT,
                 descripcion TEXT,
                 importe REAL,
@@ -31,30 +30,62 @@ def crear_tabla_registros():
         conn.commit()
 
 
-def insertar_registro(marca_temporal, descripcion, importe, tipo):
-    raw = f"{marca_temporal}-{descripcion}-{importe}-{tipo}"
-    cable = sha256(raw.encode('utf-8')).hexdigest()
-
+def insertar_registro(uuid, marca_temporal, descripcion, importe, tipo):
     with conectar(REGISTROS_DB) as conn:
         try:
             conn.execute("""
-                INSERT INTO registros (cable, marca_temporal, descripcion, importe, tipo)
+                INSERT INTO registros (uuid, marca_temporal, descripcion, importe, tipo)
                 VALUES (?, ?, ?, ?, ?)
-            """, (cable, marca_temporal, descripcion, importe, tipo))
+            """, (uuid, marca_temporal, descripcion, importe, tipo))
             conn.commit()
             return True
         except sqlite3.IntegrityError:
             return False
 
-
 def obtener_registros(anio, mes):
     with conectar(REGISTROS_DB) as conn:
         cursor = conn.execute("""
-            SELECT cable, marca_temporal, descripcion, importe, tipo
+            SELECT uuid, marca_temporal, descripcion, importe, tipo
             FROM registros
             WHERE strftime('%Y', marca_temporal) = ? AND strftime('%m', marca_temporal) = ?
         """, (str(anio), f"{int(mes):02}"))
-        return [dict(zip([column[0] for column in cursor.description], row)) for row in cursor.fetchall()]
+
+        registros = []
+        total_importe = 0.0
+        totales_por_tipo = {}  # Diccionario para acumular totales por categoría
+
+        for row in cursor.fetchall():
+            uuid, marca_temporal, descripcion, importe, tipo = row
+            total_importe += importe
+            
+            # Acumular el importe por tipo/categoría
+            if tipo in totales_por_tipo:
+                totales_por_tipo[tipo] += importe
+            else:
+                totales_por_tipo[tipo] = importe
+
+            importe_str = f"{importe:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
+            registros.append({
+                "uuid": uuid,
+                "datetime": marca_temporal,
+                "description": descripcion,
+                "amount": importe_str,
+                "type": tipo
+            })
+
+        total_str = f"{total_importe:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
+        
+        # Formatear los totales por tipo con el formato de moneda
+        totales_por_tipo_formateados = {
+            tipo: f"{importe:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
+            for tipo, importe in totales_por_tipo.items()
+        }
+
+        return {
+            "total": total_str,
+            "total_by_expense_type": totales_por_tipo_formateados,
+            "expenses": registros
+        }
 
 
 # ------------------- RESUMEN TARJETAS -------------------
@@ -108,8 +139,9 @@ def existe_documento(document_number):
         return cursor.fetchone()[0] > 0
 
 
-def insertar_resumen_tarjeta(document_number, resume_date, payload_dict):
+def insertar_resumen_tarjeta(document_number, resume_date, payload_dict, card_type):
     with conectar(TARJETAS_DB) as conn:
+        card_type = card_type
         for holder, data in payload_dict.items():
             total_ars = float(data["Total"]["pesos"].replace(".", "").replace(",", "."))
             total_usd = float(data["Total"]["dolares"].replace(",", "."))
@@ -118,7 +150,7 @@ def insertar_resumen_tarjeta(document_number, resume_date, payload_dict):
             conn.execute("""
                 INSERT OR IGNORE INTO cards_resume_header (document_number, card_type, resume_date, total_ars, total_usd)
                 VALUES (?, ?, ?, ?, ?)
-            """, (document_number, "Visa", resume_date.isoformat(), total_ars, total_usd))
+            """, (document_number, card_type, resume_date.isoformat(), total_ars, total_usd))
 
             # Insertar holder resumen
             conn.execute("""
@@ -194,11 +226,21 @@ def obtener_resumen(anio, mes, card_type=None, holder=None):
                 for e_row in conn.execute(expense_query, (doc_number, h_name)).fetchall():
                     e_date, e_desc, e_amount = e_row
                     e_date_fmt = datetime.fromisoformat(e_date).strftime("%d-%b-%y")
-                    expense = {
-                        "date": e_date_fmt,
-                        "descriptions": e_desc,
-                        "amount": f"{e_amount:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
-                    }
+                    if "USD" not in e_desc:
+                        expense = {
+                            "date": e_date_fmt,
+                            "descriptions": e_desc,
+                            "amount_pesos": f"{e_amount:,.2f}".replace(",", "#").replace(".", ",").replace("#", "."),
+                            "amount_usd":""
+                        }
+                    else:
+                        expense = {
+                            "date": e_date_fmt,
+                            "descriptions": e_desc,
+                            "amount_pesos": "",
+                            "amount_usd": f"{e_amount:,.2f}".replace(",", "#").replace(".", ",").replace("#", "."),
+                        }
+
                     holder_info["expenses"].append(expense)
 
                 card["holders"].append(holder_info)
@@ -239,3 +281,43 @@ def obtener_tarjetas_disponibles(anio, mes):
                 for tipo, holders in tarjetas.items()
             ]
         }
+    
+def get_sqlite_uuids():
+    with conectar(REGISTROS_DB) as conn:
+        cursor = conn.execute("SELECT uuid FROM registros")
+        return set(row[0] for row in cursor.fetchall())
+
+def eliminar_varios_por_uuid(uuids: set):
+    if not uuids:
+        return
+    with conectar(REGISTROS_DB) as conn:
+        conn.executemany(
+            "DELETE FROM registros WHERE uuid = ?",
+            [(uuid,) for uuid in uuids]
+        )
+        conn.commit()
+
+def insertar_varios_registros(filas: list[dict]):
+    if not filas:
+        return
+    datos = []
+    for row in filas:
+        try:
+            uuid = row["UUID"]
+            marca_temporal = datetime.strptime(row["Marca temporal"], "%d/%m/%Y %H:%M:%S").isoformat()
+            descripcion = row["Descripción"]
+            # ✅ Manejo correcto del formato $123,456.78
+            importe_str = row["Importe"].replace("$", "").replace(",", "")
+            importe = float(importe_str)
+            tipo = row["Tipo de gatos"]
+            datos.append((uuid, marca_temporal, descripcion, importe, tipo))
+        except Exception as e:
+            print(f"❌ Error procesando fila con UUID {row.get('UUID')}: {e}")
+
+    with conectar(REGISTROS_DB) as conn:
+        conn.executemany("""
+            INSERT INTO registros (uuid, marca_temporal, descripcion, importe, tipo)
+            VALUES (?, ?, ?, ?, ?)
+        """, datos)
+        conn.commit()
+
