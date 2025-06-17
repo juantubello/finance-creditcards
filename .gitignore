@@ -28,4 +28,4 @@ venv/
 *.swp
 
 # Creds
-.json
+*.json
