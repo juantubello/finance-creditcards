@@ -300,7 +300,7 @@ def get_sqlite_uuids():
         cursor = conn.execute("SELECT uuid FROM registros")
         return set(row[0] for row in cursor.fetchall())
 
-def eliminar_varios_por_uuid(uuids: set):
+def delete_expenses(uuids: set):
     if not uuids:
         return
     with conectar(REGISTROS_DB) as conn:
@@ -310,7 +310,41 @@ def eliminar_varios_por_uuid(uuids: set):
         )
         conn.commit()
 
-def insertar_varios_registros(filas: list[dict]):
+def insert_expenses(filas: list[dict]):
+    if not filas:
+        return
+    datos = []
+    for row in filas:
+        try:
+            uuid = row["UUID"]
+            marca_temporal = datetime.strptime(row["Marca temporal"], "%d/%m/%Y %H:%M:%S").isoformat()
+            descripcion = row["Descripción"]
+            # ✅ Manejo correcto del formato $123,456.78
+            importe_str = row["Importe"].replace("$", "").replace(",", "")
+            importe = float(importe_str)
+            tipo = row["Tipo de gatos"]
+            datos.append((uuid, marca_temporal, descripcion, importe, tipo))
+        except Exception as e:
+            print(f"❌ Error procesando fila con UUID {row.get('UUID')}: {e}")
+
+    with conectar(REGISTROS_DB) as conn:
+        conn.executemany("""
+            INSERT INTO registros (uuid, marca_temporal, descripcion, importe, tipo)
+            VALUES (?, ?, ?, ?, ?)
+        """, datos)
+        conn.commit()
+
+def delete_incomes(uuids: set):
+    if not uuids:
+        return
+    with conectar(REGISTROS_DB) as conn:
+        conn.executemany(
+            "DELETE FROM registros WHERE uuid = ?",
+            [(uuid,) for uuid in uuids]
+        )
+        conn.commit()
+
+def insert_incomes(filas: list[dict]):
     if not filas:
         return
     datos = []

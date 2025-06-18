@@ -8,18 +8,25 @@ from app.database import (
     insertar_resumen_tarjeta,
     existe_documento,
     get_sqlite_uuids,
-    eliminar_varios_por_uuid,
-    insertar_varios_registros
+    delete_expenses,
+    insert_expenses,
+    delete_incomes,
+    insert_incomes
 )
 from app.googlesheet import(
     auth_in_gdrive,
     get_current_month_expenses,
-    get_historic_expenses
+    get_historic_expenses,
+    get_current_month_income,
+    get_historic_income
 )
 from datetime import datetime
 import hashlib
 import os
 import json
+import traceback
+import time
+from typing import Callable
 
 # DEBUG remoto si está activo
 if os.getenv("DEBUG_MODE") == "1":
@@ -79,11 +86,8 @@ async def cargar_resumen_tarjeta(request: Request):
 @app.get("/getResumeExpenses/{anio}/{mes}/{card_type}/{holder}")
 def get_resume_expenses(anio: int, mes: int, card_type: str = None, holder: str = None):
     from app.database import obtener_resumen
-
     resumen = obtener_resumen(anio, mes, card_type, holder)
-
     return resumen
-
 
 @app.get("/getAvailableResumes/{anio}/{mes}")
 def get_available_resumes(anio: int, mes: int):
@@ -91,25 +95,68 @@ def get_available_resumes(anio: int, mes: int):
 
     return obtener_tarjetas_disponibles(anio, mes)
 
+def sync_data(
+    get_sheet_data_func: Callable,
+    insert_func: Callable,
+    delete_func: Callable,
+    label: str
+):
+    start_time = time.time()
+    print(f"\n🔄 Sincronizando: {label}...")
+
+    try:
+        client = auth_in_gdrive()
+        print("✅ Autenticación en Google Drive completada")
+
+        sheet = get_sheet_data_func(client)
+        print(f"📄 Filas obtenidas desde Google Sheets: {len(sheet)}")
+
+        sheet_uuids = set(row["UUID"] for row in sheet if row.get("UUID"))
+        sqlite_uuids = get_sqlite_uuids()
+        print(f"📂 UUIDs en hoja: {len(sheet_uuids)} | UUIDs en SQLite: {len(sqlite_uuids)}")
+
+        uuids_to_insert = sheet_uuids - sqlite_uuids
+        uuids_to_delete = sqlite_uuids - sheet_uuids
+
+        rows_to_insert = [row for row in sheet if row.get("UUID") in uuids_to_insert]
+
+        print(f"➕ Insertando {len(rows_to_insert)} nuevos registros")
+        insert_func(rows_to_insert)
+
+        print(f"🗑️ Eliminando {len(uuids_to_delete)} registros antiguos")
+        delete_func(uuids_to_delete)
+
+        duration = round(time.time() - start_time, 2)
+        print(f"✅ Sincronización completada en {duration} segundos")
+
+        return {
+            "state": f"{label} updated",
+            "added": len(uuids_to_insert),
+            "deleted": len(uuids_to_delete),
+            "duration_sec": duration
+        }
+
+    except Exception as e:
+        print("❌ Error durante la sincronización:")
+        traceback.print_exc()
+        return {
+            "state": f"Error syncing {label}",
+            "error": str(e)
+        }
+    
+
+@app.get("/syncHistoricExpenses")
+def sync_historic_expenses():
+    return sync_data(get_historic_expenses, insert_expenses, delete_expenses, "Historic expenses")
+
 @app.get("/syncCurrentMonthExpenses")
 def sync_current_month_expenses():
-    client = auth_in_gdrive()
-    sheet = get_current_month_expenses(client)
-    sheet_uuids = set(row["UUID"] for row in sheet if row["UUID"])
+    return sync_data(get_current_month_expenses, insert_expenses, delete_expenses, "Monthly expenses")
 
-    sqlite_uuids = get_sqlite_uuids()
+@app.get("/syncHistoricIncome")
+def sync_historic_income():
+    return sync_data(get_historic_income, insert_incomes, delete_incomes, "Historic incomes")
 
-    uuids_to_insert = sheet_uuids - sqlite_uuids
-    uuids_to_delete = sqlite_uuids - sheet_uuids
-
-    # Filtrar solo los que hay que insertar
-    filas_a_insertar = [row for row in sheet if row["UUID"] in uuids_to_insert]
-
-    eliminar_varios_por_uuid(uuids_to_delete)
-    insertar_varios_registros(filas_a_insertar)
-
-    return {
-        "estado": "Sincronización completa optimizada",
-        "agregados": len(uuids_to_insert),
-        "eliminados": len(filas_a_insertar)
-    }
+@app.get("/syncCurrentMonthIncome")
+def sync_current_month_income():
+    return sync_data(get_current_month_income, insert_incomes, delete_incomes, "Monthly incomes")
