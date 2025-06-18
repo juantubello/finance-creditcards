@@ -3,13 +3,13 @@ import gspread
 import json
 #from  dotenv import load_dotenv
 from oauth2client.service_account import ServiceAccountCredentials
-
-SHEET_MES_ACTUAL = 5
-SHEET_COMPLETA = 1
+SHEET_NAME = "Gastos"
+SHEET_CURRENT_MONTH_EXPENSES = 5
+SHEET_HISTORIC_EXPENSES = 1
+SHEET_CURRENT_MONTH_INCOME = 6
+SHEET_HISTORIC_INCOME = 3
 
 def auth_in_gdrive():
-
-    #load_dotenv()
 
     """
     This function logs into DRIVE API in order to interact, in this case, with our DATABASE
@@ -25,15 +25,24 @@ def auth_in_gdrive():
     return client
 
 def get_current_month_expenses(client):
-    sheet = client.open("Gastos").get_worksheet(SHEET_MES_ACTUAL)
+    sheet = client.open(SHEET_NAME).get_worksheet(SHEET_CURRENT_MONTH_EXPENSES)
     sheet_data = sheet.get_all_records()
     return sheet_data
 
 def get_historic_expenses(client):
-    sheet = client.open("Gastos").get_worksheet(SHEET_COMPLETA)
+    sheet = client.open(SHEET_NAME).get_worksheet(SHEET_HISTORIC_EXPENSES)
     sheet_data = sheet.get_all_records()
     return sheet_data
 
+def get_current_month_income(client):
+    sheet = client.open(SHEET_NAME).get_worksheet(SHEET_CURRENT_MONTH_INCOME)
+    sheet_data = sheet.get_all_records()
+    return sheet_data
+
+def get_historic_income(client):
+    sheet = client.open(SHEET_NAME).get_worksheet(SHEET_HISTORIC_INCOME)
+    sheet_data = sheet.get_all_records()
+    return sheet_data
 ## Logic ##
 
 #client = auth_in_gdrive()

@@ -24,11 +24,24 @@ def crear_tabla_registros():
                 marca_temporal TEXT,
                 descripcion TEXT,
                 importe REAL,
-                tipo TEXT
+                moneda TEXT
             )
         """)
         conn.commit()
 
+def create_income_table():
+    with conectar(REGISTROS_DB) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS income (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid TEXT UNIQUE,
+                marca_temporal TEXT,
+                descripcion TEXT,
+                importe REAL,
+                tipo TEXT
+            )
+        """)
+        conn.commit()
 
 def insertar_registro(uuid, marca_temporal, descripcion, importe, tipo):
     with conectar(REGISTROS_DB) as conn:
