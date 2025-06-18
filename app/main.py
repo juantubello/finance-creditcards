@@ -7,11 +7,14 @@ from app.database import (
     obtener_registros,
     insertar_resumen_tarjeta,
     existe_documento,
-    get_sqlite_uuids,
+    get_sqlite_expense_uuids,
+    get_sqlite_income_uuids,
     delete_expenses,
     insert_expenses,
     delete_incomes,
-    insert_incomes
+    insert_incomes,
+    create_income_table,
+    get_incomes
 )
 from app.googlesheet import(
     auth_in_gdrive,
@@ -38,6 +41,7 @@ app = FastAPI()
 
 # Crear las tablas al iniciar la app
 crear_tabla_registros()
+create_income_table()
 crear_tablas_resumen_tarjeta()
 
 # Endpoint POST para /registro
@@ -97,10 +101,15 @@ def get_available_resumes(anio: int, mes: int):
 
 # ++++ Fetch data ++++
 
-@app.get("/registros/{anio}/{mes}")
-def listar_registros(anio: int, mes: int):
+@app.get("/expenses/{anio}/{mes}")
+def get_expenses(anio: int, mes: int):
     registros = obtener_registros(anio, mes)
-    return {"registros": registros}
+    return {"expenses": registros}
+
+@app.get("/incomes/{anio}/{mes}")
+def get_income(anio: int, mes: int):
+    income = get_incomes(anio, mes)
+    return {"income": income}
 
 # ++++ Sync data ++++
 
@@ -108,35 +117,35 @@ def sync_data(
     get_sheet_data_func: Callable,
     insert_func: Callable,
     delete_func: Callable,
+    get_sqlite_uuids_func: Callable,
     label: str
 ):
     start_time = time.time()
-    print(f"\n🔄 Sincronizando: {label}...")
+    print(f"\n synching: {label}...")
 
     try:
         client = auth_in_gdrive()
-        print("✅ Autenticación en Google Drive completada")
+        print("Google drive authentication complete")
 
         sheet = get_sheet_data_func(client)
-        print(f"📄 Filas obtenidas desde Google Sheets: {len(sheet)}")
+        print(f"Google Sheet rows obtained: {len(sheet)}")
 
         sheet_uuids = set(row["UUID"] for row in sheet if row.get("UUID"))
-        sqlite_uuids = get_sqlite_uuids()
-        print(f"📂 UUIDs en hoja: {len(sheet_uuids)} | UUIDs en SQLite: {len(sqlite_uuids)}")
+        sqlite_uuids = get_sqlite_uuids_func()
+        print(f"UUIDs on google sheet: {len(sheet_uuids)} | UUIDs on SQLite: {len(sqlite_uuids)}")
 
         uuids_to_insert = sheet_uuids - sqlite_uuids
         uuids_to_delete = sqlite_uuids - sheet_uuids
-
         rows_to_insert = [row for row in sheet if row.get("UUID") in uuids_to_insert]
 
-        print(f"➕ Insertando {len(rows_to_insert)} nuevos registros")
+        print(f"Inserting {len(rows_to_insert)} new records")
         insert_func(rows_to_insert)
 
-        print(f"🗑️ Eliminando {len(uuids_to_delete)} registros antiguos")
+        print(f"Deleting {len(uuids_to_delete)} old records")
         delete_func(uuids_to_delete)
 
         duration = round(time.time() - start_time, 2)
-        print(f"✅ Sincronización completada en {duration} segundos")
+        print(f"Synching complete in {duration} seconds")
 
         return {
             "state": f"{label} updated",
@@ -146,26 +155,25 @@ def sync_data(
         }
 
     except Exception as e:
-        print("❌ Error durante la sincronización:")
+        print("Error while synching")
         traceback.print_exc()
         return {
             "state": f"Error syncing {label}",
             "error": str(e)
         }
     
-
 @app.get("/syncHistoricExpenses")
 def sync_historic_expenses():
-    return sync_data(get_historic_expenses, insert_expenses, delete_expenses, "Historic expenses")
+    return sync_data(get_historic_expenses, insert_expenses, delete_expenses, get_sqlite_expense_uuids, "Historic expenses")
 
 @app.get("/syncCurrentMonthExpenses")
 def sync_current_month_expenses():
-    return sync_data(get_current_month_expenses, insert_expenses, delete_expenses, "Monthly expenses")
+    return sync_data(get_current_month_expenses, insert_expenses, delete_expenses, get_sqlite_expense_uuids, "Monthly expenses")
 
 @app.get("/syncHistoricIncome")
 def sync_historic_income():
-    return sync_data(get_historic_income, insert_incomes, delete_incomes, "Historic incomes")
+    return sync_data(get_historic_income, insert_incomes, delete_incomes, get_sqlite_income_uuids, "Historic incomes")
 
 @app.get("/syncCurrentMonthIncome")
 def sync_current_month_income():
-    return sync_data(get_current_month_income, insert_incomes, delete_incomes, "Monthly incomes")
+    return sync_data(get_current_month_income, insert_incomes, delete_incomes, get_sqlite_income_uuids, "Monthly incomes")

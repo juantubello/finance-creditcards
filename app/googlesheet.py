@@ -37,28 +37,10 @@ def get_historic_expenses(client):
 def get_current_month_income(client):
     sheet = client.open(SHEET_NAME).get_worksheet(SHEET_CURRENT_MONTH_INCOME)
     sheet_data = sheet.get_all_records()
+    print(sheet_data)
     return sheet_data
 
 def get_historic_income(client):
     sheet = client.open(SHEET_NAME).get_worksheet(SHEET_HISTORIC_INCOME)
     sheet_data = sheet.get_all_records()
     return sheet_data
-## Logic ##
-
-#client = auth_in_gdrive()
-#gs = SHEET_MES_ACTUAL
-#gs = SHEET_COMPLETA
-#sheet = client.open("Gastos").get_worksheet(gs)
-#sheet_data = sheet.get_all_records()
-#uuids_from_excel = set(row["UUID"] for row in sheet_data if row["UUID"])
-#print(uuids_from_excel)
-#uuid_column = sheet.col_values(5)
-
-#prueba = sheet.
-#test = sheet.update_cell(rows_count, 2, 15000)
-#print(uuid_column)
-
-
-#db_data = sheet.get_all_records()
-#print(db_data)
-#db_data = sheet.col_values(1)wqw

@@ -24,7 +24,7 @@ def crear_tabla_registros():
                 marca_temporal TEXT,
                 descripcion TEXT,
                 importe REAL,
-                moneda TEXT
+                tipo TEXT
             )
         """)
         conn.commit()
@@ -38,7 +38,7 @@ def create_income_table():
                 marca_temporal TEXT,
                 descripcion TEXT,
                 importe REAL,
-                tipo TEXT
+                moneda TEXT
             )
         """)
         conn.commit()
@@ -100,6 +100,36 @@ def obtener_registros(anio, mes):
             "expenses": registros
         }
 
+def get_incomes(anio, mes):
+ with conectar(REGISTROS_DB) as conn:
+        cursor = conn.execute("""
+            SELECT uuid, marca_temporal, descripcion, importe, moneda
+            FROM income
+            WHERE strftime('%Y', marca_temporal) = ? AND strftime('%m', marca_temporal) = ?
+        """, (str(anio), f"{int(mes):02}"))
+
+        registros = []
+        total_importe = 0.0
+
+        for row in cursor.fetchall():
+            uuid, marca_temporal, descripcion, importe, moneda = row
+            total_importe += importe
+            
+            importe_str = f"{importe:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
+            registros.append({
+                "uuid": uuid,
+                "datetime": marca_temporal,
+                "description": descripcion,
+                "amount": importe_str,
+                "currency": moneda
+            })
+
+        total_str = f"{total_importe:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
+        
+        return {
+            "total": total_str,
+            "incomes": registros
+        }
 
 # ------------------- RESUMEN TARJETAS -------------------
 
@@ -295,9 +325,14 @@ def obtener_tarjetas_disponibles(anio, mes):
             ]
         }
     
-def get_sqlite_uuids():
+def get_sqlite_expense_uuids():
     with conectar(REGISTROS_DB) as conn:
         cursor = conn.execute("SELECT uuid FROM registros")
+        return set(row[0] for row in cursor.fetchall())
+
+def get_sqlite_income_uuids():
+    with conectar(REGISTROS_DB) as conn:
+        cursor = conn.execute("SELECT uuid FROM income")
         return set(row[0] for row in cursor.fetchall())
 
 def delete_expenses(uuids: set):
@@ -339,7 +374,7 @@ def delete_incomes(uuids: set):
         return
     with conectar(REGISTROS_DB) as conn:
         conn.executemany(
-            "DELETE FROM registros WHERE uuid = ?",
+            "DELETE FROM income WHERE uuid = ?",
             [(uuid,) for uuid in uuids]
         )
         conn.commit()
@@ -352,18 +387,18 @@ def insert_incomes(filas: list[dict]):
         try:
             uuid = row["UUID"]
             marca_temporal = datetime.strptime(row["Marca temporal"], "%d/%m/%Y %H:%M:%S").isoformat()
-            descripcion = row["Descripción"]
+            descripcion = row["Descripcion"]
             # ✅ Manejo correcto del formato $123,456.78
             importe_str = row["Importe"].replace("$", "").replace(",", "")
             importe = float(importe_str)
-            tipo = row["Tipo de gatos"]
-            datos.append((uuid, marca_temporal, descripcion, importe, tipo))
+            moneda = row["Moneda"]
+            datos.append((uuid, marca_temporal, descripcion, importe, moneda))
         except Exception as e:
             print(f"❌ Error procesando fila con UUID {row.get('UUID')}: {e}")
 
     with conectar(REGISTROS_DB) as conn:
         conn.executemany("""
-            INSERT INTO registros (uuid, marca_temporal, descripcion, importe, tipo)
+            INSERT INTO income (uuid, marca_temporal, descripcion, importe, moneda)
             VALUES (?, ?, ?, ?, ?)
         """, datos)
         conn.commit()
