@@ -41,24 +41,20 @@ crear_tabla_registros()
 crear_tablas_resumen_tarjeta()
 
 # Endpoint POST para /registro
-@app.post("/registro")
-def agregar_registro(registro: RegistroEntrada):
-    exito = insertar_registro(
-        uuid=registro.uuid,
-        marca_temporal=registro.marca_temporal.isoformat(),
-        descripcion=registro.descripcion,
-        importe=registro.importe,
-        tipo=registro.tipo
-    )
-    if not exito:
-        raise HTTPException(status_code=409, detail="Registro duplicado (hash ya existe)")
-    return {"status": "Registro agregado correctamente"}
+#@app.post("/registro")
+#def agregar_registro(registro: RegistroEntrada):
+#    exito = insertar_registro(
+#        uuid=registro.uuid,
+#        marca_temporal=registro.marca_temporal.isoformat(),
+#        descripcion=registro.descripcion,
+#        importe=registro.importe,
+#        tipo=registro.tipo
+#    )
+#    if not exito:
+#        raise HTTPException(status_code=409, detail="Registro duplicado (hash ya existe)")
+#    return {"status": "Registro agregado correctamente"}
 
-# Endpoint GET para /registros/{anio}/{mes}
-@app.get("/registros/{anio}/{mes}")
-def listar_registros(anio: int, mes: int):
-    registros = obtener_registros(anio, mes)
-    return {"registros": registros}
+# ------------------- Card Resume load -------------------
 
 # Nuevo endpoint POST para /loadCardResume
 @app.post("/loadCardResume")
@@ -94,6 +90,19 @@ def get_available_resumes(anio: int, mes: int):
     from app.database import obtener_tarjetas_disponibles
 
     return obtener_tarjetas_disponibles(anio, mes)
+
+# -------------------------------------------------------------------------
+# ------------------- Expenses & Income -----------------------------------
+# -------------------------------------------------------------------------
+
+# ++++ Fetch data ++++
+
+@app.get("/registros/{anio}/{mes}")
+def listar_registros(anio: int, mes: int):
+    registros = obtener_registros(anio, mes)
+    return {"registros": registros}
+
+# ++++ Sync data ++++
 
 def sync_data(
     get_sheet_data_func: Callable,
