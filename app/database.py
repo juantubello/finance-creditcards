@@ -1,6 +1,7 @@
 import sqlite3
 from pathlib import Path
 from datetime import datetime
+import requests
 
 # Paths para cada base de datos
 REGISTROS_DB = Path(__file__).resolve().parent.parent / "data" / "registros.db"
@@ -101,6 +102,9 @@ def obtener_registros(anio, mes):
         }
 
 def get_incomes(anio, mes):
+ 
+ dolar_blue_buy = get_dolar_blue_buy()
+  
  with conectar(REGISTROS_DB) as conn:
         cursor = conn.execute("""
             SELECT uuid, marca_temporal, descripcion, importe, moneda
@@ -109,25 +113,42 @@ def get_incomes(anio, mes):
         """, (str(anio), f"{int(mes):02}"))
 
         registros = []
-        total_importe = 0.0
+        total_ars = 0.0
+        total_usd = 0.0
 
         for row in cursor.fetchall():
-            uuid, marca_temporal, descripcion, importe, moneda = row
-            total_importe += importe
+            uuid, marca_temporal, descripcion, importe, moneda = row     
             
-            importe_str = f"{importe:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
+            amount_ars = 0.0
+            amount_usd = 0.0
+
+            if moneda == "USD":
+                amount_ars = importe * dolar_blue_buy
+                amount_usd = importe
+            else:
+                amount_ars = importe
+                amount_usd = importe / dolar_blue_buy
+
+            amount_ars_str = f"{amount_ars:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
+            amount_usd_str = f"{amount_usd:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
+
             registros.append({
                 "uuid": uuid,
                 "datetime": marca_temporal,
                 "description": descripcion,
-                "amount": importe_str,
-                "currency": moneda
-            })
-
-        total_str = f"{total_importe:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
+                "amount_pesos": amount_ars_str,
+                "amount_usd": amount_usd_str
+             })
+            
+            total_ars += amount_ars
+            total_usd += amount_usd
         
+        total_ars_str = f"{total_ars:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
+        total_usd_str = f"{total_usd:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
+
         return {
-            "total": total_str,
+            "total_ars": total_ars_str,
+            "total_usd": total_usd_str,
             "incomes": registros
         }
 
@@ -402,3 +423,10 @@ def insert_incomes(filas: list[dict]):
             VALUES (?, ?, ?, ?, ?)
         """, datos)
         conn.commit()
+
+def get_dolar_blue_buy():
+ response = requests.get("https://api.bluelytics.com.ar/v2/latest")
+ dolar_data = response.json()
+ dolar_blue_data = dolar_data.get('blue')
+ dolar_blue_buy = dolar_blue_data.get('value_buy')
+ return dolar_blue_buy

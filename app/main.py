@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from app.models import RegistroEntrada
 from app.database import (
     crear_tabla_registros,
@@ -14,7 +15,8 @@ from app.database import (
     delete_incomes,
     insert_incomes,
     create_income_table,
-    get_incomes
+    get_incomes,
+    obtener_tarjetas_disponibles
 )
 from app.googlesheet import(
     auth_in_gdrive,
@@ -39,24 +41,18 @@ if os.getenv("DEBUG_MODE") == "1":
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Crear las tablas al iniciar la app
 crear_tabla_registros()
 create_income_table()
 crear_tablas_resumen_tarjeta()
-
-# Endpoint POST para /registro
-#@app.post("/registro")
-#def agregar_registro(registro: RegistroEntrada):
-#    exito = insertar_registro(
-#        uuid=registro.uuid,
-#        marca_temporal=registro.marca_temporal.isoformat(),
-#        descripcion=registro.descripcion,
-#        importe=registro.importe,
-#        tipo=registro.tipo
-#    )
-#    if not exito:
-#        raise HTTPException(status_code=409, detail="Registro duplicado (hash ya existe)")
-#    return {"status": "Registro agregado correctamente"}
 
 # ------------------- Card Resume load -------------------
 
@@ -91,8 +87,6 @@ def get_resume_expenses(anio: int, mes: int, card_type: str = None, holder: str 
 
 @app.get("/getAvailableResumes/{anio}/{mes}")
 def get_available_resumes(anio: int, mes: int):
-    from app.database import obtener_tarjetas_disponibles
-
     return obtener_tarjetas_disponibles(anio, mes)
 
 # -------------------------------------------------------------------------
