@@ -206,9 +206,19 @@ def existe_documento(document_number):
 def insertar_resumen_tarjeta(document_number, resume_date, payload_dict, card_type):
     with conectar(TARJETAS_DB) as conn:
         card_type = card_type
+        total_ars = 0
+        total_usd = 0
+
         for holder, data in payload_dict.items():
-            total_ars = float(data["Total"]["pesos"].replace(".", "").replace(",", "."))
-            total_usd = float(data["Total"]["dolares"].replace(",", "."))
+            if (holder != "Total"):
+                continue
+            total_ars = float(data["pesos"].replace(".", "").replace(",", "."))
+            total_usd = float(data["dolares"].replace(",", "."))
+
+        for holder, data in payload_dict.items():
+
+            if holder == "Total":
+                continue
 
             # Insertar header solo una vez (lo repetimos por cada holder, pero la PK lo previene)
             conn.execute("""
@@ -236,14 +246,17 @@ def insertar_resumen_tarjeta(document_number, resume_date, payload_dict, card_ty
         conn.commit()
 
 def obtener_resumen(anio, mes, card_type=None, holder=None):
+
+    total_ars_cards = 0
+    total_usd_cards = 0
+
     resumen = {
         "cards": [],
-        "total_ars_cards": "#Vacio por el momento",
-        "total_usd_cards": "#vacio por el momento"
+        "total_ars_cards": total_ars_cards,
+        "total_usd_cards": total_usd_cards
     }
 
     with conectar(TARJETAS_DB) as conn:
-        filtro_fecha = datetime(anio, mes, 1).strftime('%Y-%m-01')
 
         query = """
                  SELECT * FROM cards_resume_header
@@ -264,6 +277,8 @@ def obtener_resumen(anio, mes, card_type=None, holder=None):
             }
 
             doc_number = row[0]
+            total_ars_cards += row[3]
+            total_usd_cards += row[4]
 
             # Holders para esta tarjeta
             holder_query = "SELECT holder, total_ars, total_usd FROM card_resume_holder WHERE document_number = ?"
@@ -310,6 +325,8 @@ def obtener_resumen(anio, mes, card_type=None, holder=None):
                 card["holders"].append(holder_info)
 
             resumen["cards"].append(card)
+            resumen["total_ars_cards"] = f"{total_ars_cards:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
+            resumen["total_usd_cards"] = f"{total_usd_cards:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
 
     return resumen
 
