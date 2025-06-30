@@ -9,6 +9,7 @@ services:
     volumes:
       - ./app:/app/app
       - ./data:/app/data
+      - "${DOCKER_DIRECTORY_MOUNT}:/resumenes"  # Montaje de PDF
     env_file:
       - .env
     command: >

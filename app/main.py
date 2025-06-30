@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.models import RegistroEntrada
 from app.database import (
     crear_tabla_registros,
@@ -32,6 +33,9 @@ import json
 import traceback
 import time
 from typing import Callable
+import httpx
+import re
+from pathlib import Path
 
 # DEBUG remoto si está activo
 if os.getenv("DEBUG_MODE") == "1":
@@ -76,6 +80,76 @@ async def cargar_resumen_tarjeta(request: Request):
     insertar_resumen_tarjeta(document_number, resume_date, payload_dict, card_type)
 
     return {"status": "Resumen de tarjeta cargado correctamente"}
+
+@app.get("/syncResumes")
+async def sync_resumes():
+    PARSE_PDF_ENDPOINT = os.getenv("PARSE_PDF_ENDPOINT")
+    RESUMENES_DIR = Path(os.getenv("RESUMES_LOCAL_LOCATION", str(Path.home() / "resumenes")))
+
+    tarjetas = ["visa", "mastercard"]
+    resultados = []
+    exitosos = []
+    fallidos = []
+
+    async with httpx.AsyncClient() as client:
+        for tarjeta in tarjetas:
+            carpeta = RESUMENES_DIR / tarjeta
+            if not carpeta.exists():
+                continue
+
+            for pdf_file in carpeta.glob("*.pdf"):
+                match = re.match(r"(\d{2})-(\d{4})\.pdf", pdf_file.name)
+                if not match:
+                    fallidos.append({"archivo": pdf_file.name, "motivo": "Nombre inválido", "card_type": tarjeta})
+                    continue
+
+                mes, anio = int(match.group(1)), int(match.group(2))
+                resultado = {
+                    "month": mes,
+                    "year": anio,
+                    "card_type": tarjeta,
+                    "archivo": pdf_file.name
+                }
+
+                try:
+                    with open(pdf_file, "rb") as f:
+                        files = {"file": (pdf_file.name, f, "application/pdf")}
+                        response = await client.post(PARSE_PDF_ENDPOINT, files=files)
+                        response.raise_for_status()
+                        parsed_data = response.json()
+                        resultado["resume_data"] = parsed_data
+                except httpx.HTTPError as e:
+                    fallidos.append({"archivo": pdf_file.name, "motivo": f"POST fallido: {str(e)}", "card_type": tarjeta})
+                    continue
+
+                resultados.append(resultado)
+
+    # Segunda etapa: insertar en BD los que tienen resume_data
+    for r in resultados:
+        if "resume_data" not in r:
+            fallidos.append({"archivo": r["archivo"], "motivo": "PDF sin datos útiles", "card_type": r["card_type"]})
+            continue
+
+        try:
+            payload_dict = r["resume_data"]
+            
+            payload_bytes = json.dumps(payload_dict, ensure_ascii=False).encode("utf-8")
+            document_number = hashlib.sha256(payload_bytes).hexdigest()
+            resume_date = datetime(r["year"], r["month"], 1, 0, 0, 0)
+
+            if existe_documento(document_number):
+                fallidos.append({"archivo": r["archivo"], "motivo": "Resumen ya existe", "card_type": r["card_type"]})
+                continue
+
+            insertar_resumen_tarjeta(document_number, resume_date, payload_dict, r["card_type"])
+            exitosos.append({"archivo": r["archivo"], "card_type": r["card_type"]})
+        except Exception as e:
+            fallidos.append({"archivo": r["archivo"], "motivo": f"Error al guardar: {str(e)}", "card_type": r["card_type"]}) 
+
+    return JSONResponse({
+        "procesados_ok": exitosos,
+        "procesados_fallidos": fallidos
+    })
 
 @app.get("/getResumeExpenses/{anio}/{mes}")
 @app.get("/getResumeExpenses/{anio}/{mes}/{card_type}")
