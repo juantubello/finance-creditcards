@@ -368,6 +368,24 @@ def get_sqlite_expense_uuids():
         cursor = conn.execute("SELECT uuid FROM registros")
         return set(row[0] for row in cursor.fetchall())
 
+def get_current_month_expense_uuids():
+    now = datetime.now()
+    with conectar(REGISTROS_DB) as conn:
+        cursor = conn.execute("""
+        SELECT uuid
+        FROM registros
+         WHERE strftime('%Y', marca_temporal) = ? AND strftime('%m', marca_temporal) = ? """,(str(now.year), f"{int(now.month):02}"))
+        return set(row[0] for row in cursor.fetchall())
+
+def get_current_month_income_uuids():
+    now = datetime.now()
+    with conectar(REGISTROS_DB) as conn:
+        cursor = conn.execute("""
+        SELECT uuid
+        FROM income
+         WHERE strftime('%Y', marca_temporal) = ? AND strftime('%m', marca_temporal) = ? """,(str(now.year), f"{int(now.month):02}"))
+        return set(row[0] for row in cursor.fetchall())
+
 def get_sqlite_income_uuids():
     with conectar(REGISTROS_DB) as conn:
         cursor = conn.execute("SELECT uuid FROM income")
@@ -447,3 +465,12 @@ def get_dolar_blue_buy():
  dolar_blue_data = dolar_data.get('blue')
  dolar_blue_buy = dolar_blue_data.get('value_buy')
  return dolar_blue_buy
+
+def get_balance():
+     with conectar(REGISTROS_DB) as conn:
+        expenses = conn.execute(""" SELECT SUM(importe) FROM registros""").fetchone()[0] or 0
+        
+        income   = conn.execute(""" SELECT SUM(importe) FROM income""").fetchone()[0] or 0
+        balance = income - expenses
+        return float(round(balance, 2))
+    

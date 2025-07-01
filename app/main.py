@@ -17,7 +17,10 @@ from app.database import (
     insert_incomes,
     create_income_table,
     get_incomes,
-    obtener_tarjetas_disponibles
+    obtener_tarjetas_disponibles,
+    get_balance,
+    get_current_month_expense_uuids,
+    get_current_month_income_uuids
 )
 from app.googlesheet import(
     auth_in_gdrive,
@@ -179,6 +182,11 @@ def get_income(anio: int, mes: int):
     income = get_incomes(anio, mes)
     return {"income": income}
 
+@app.get("/balance")
+def get_internal_balance():
+    balance = get_balance()
+    return {"balance": balance}
+
 # ++++ Sync data ++++
 
 def sync_data(
@@ -236,7 +244,7 @@ def sync_historic_expenses():
 
 @app.get("/syncCurrentMonthExpenses")
 def sync_current_month_expenses():
-    return sync_data(get_current_month_expenses, insert_expenses, delete_expenses, get_sqlite_expense_uuids, "Monthly expenses")
+    return sync_data(get_current_month_expenses, insert_expenses, delete_expenses, get_current_month_expense_uuids, "Monthly expenses")
 
 @app.get("/syncHistoricIncome")
 def sync_historic_income():
@@ -244,4 +252,4 @@ def sync_historic_income():
 
 @app.get("/syncCurrentMonthIncome")
 def sync_current_month_income():
-    return sync_data(get_current_month_income, insert_incomes, delete_incomes, get_sqlite_income_uuids, "Monthly incomes")
+    return sync_data(get_current_month_income, insert_incomes, delete_incomes, get_current_month_income_uuids, "Monthly incomes")
