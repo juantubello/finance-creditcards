@@ -1,7 +1,7 @@
 import os
 import gspread
 import json
-#from  dotenv import load_dotenv
+#from  dotenv import load_dotenv.
 from oauth2client.service_account import ServiceAccountCredentials
 SHEET_NAME = "Gastos"
 SHEET_CURRENT_MONTH_EXPENSES = 5
